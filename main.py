@@ -1,4 +1,5 @@
 from js import document, alert
+from pyodide.ffi import create_proxy  # <-- crucial for wiring Python -> JS events
 import string
 import random
 
@@ -11,7 +12,7 @@ WORDS = [
     "exception","module","tuple","string","integer","boolean","recursion","generator","comprehension"
 ]
 
-# ---- UI helpers ----
+# ---------------- UI helpers ----------------
 def set_word_display(text: str):
     document.getElementById("word").innerText = text
 
@@ -24,7 +25,6 @@ def disable_letter(letter: str, value: bool = True):
         btn.disabled = value
 
 def reveal_parts(count: int):
-    # 1=head, 2=torso, 3=left arm, 4=right arm, 5=left leg, 6=right leg
     parts = ["part1","part2a","part3","part4","part5","part6"]
     for i, pid in enumerate(parts, start=1):
         el = document.getElementById(pid)
@@ -39,6 +39,7 @@ def reset_parts():
     reveal_parts(0)
 
 def build_letters():
+    """Build letter buttons in the <aside> area and attach proxied Python handlers."""
     letters_div = document.getElementById("letters")
     letters_div.innerHTML = ""
     for ch in string.ascii_uppercase:
@@ -46,13 +47,15 @@ def build_letters():
         btn.className = "letter"
         btn.id = f"btn-{ch}"
         btn.textContent = ch
-        # Attach click handler that calls back into Python
+
+        # Create a proxied Python function so JS can call it safely
         def handler(evt, ch=ch):
             guess(ch)
-        btn.addEventListener("click", handler)
+        btn.addEventListener("click", create_proxy(handler))
+
         letters_div.appendChild(btn)
 
-# ---- Game state ----
+# ---------------- Game state ----------------
 played = 0
 won = 0
 target = ""
@@ -86,14 +89,12 @@ def is_over():
 def check_winner():
     global played, won
     played += 1
-    msg = ""
     if wrong < MAX_WRONG:
         won += 1
-        msg = f"You won! Word: {target}\nScore: {won}/{played}\nPlay another round?"
+        msg = f"You won! Word: {target}\nScore: {won}/{played}\n(Starting a new round…)"
     else:
-        msg = f"You lost! Word was: {target}\nScore: {won}/{played}\nPlay another round?"
+        msg = f"You lost! Word was: {target}\nScore: {won}/{played}\n(Starting a new round…)"
     set_score(won, played)
-    # Simple confirm-style behavior (PyScript doesn't have confirm; use alert + auto new)
     alert(msg)
     new_game()
 
@@ -110,14 +111,15 @@ def guess(letter: str):
     if is_over():
         check_winner()
 
-# ---- Wire up action buttons ----
+# ---------------- Actions ----------------
 def setup_actions():
-    document.getElementById("new").addEventListener("click", lambda e: new_game())
-    document.getElementById("restart").addEventListener("click", lambda e: restart_game())
-    document.getElementById("quit").addEventListener("click", lambda e: alert("Close the tab to quit 🙂"))
+    document.getElementById("new").addEventListener("click", create_proxy(lambda e: new_game()))
+    document.getElementById("restart").addEventListener("click", create_proxy(lambda e: restart_game()))
+    document.getElementById("quit").addEventListener("click", create_proxy(lambda e: alert("Close the tab to quit 🙂")))
 
-# ---- Boot ----
+# ---------------- Boot ----------------
 build_letters()
 setup_actions()
 set_score(won, played)
 new_game()
+
